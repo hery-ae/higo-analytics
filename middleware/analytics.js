@@ -5,162 +5,126 @@ module.exports = function(req, res, next) {
         client.db('higo').collection('app_users').find()
         .toArray().then( function(value) {
 
-            const unique = value.reduce( function(value, row) {
-                value[row['Name']] = (value[row['Name']] || 0) + 1
+            const analytics = value.reduce( function(data, value) {
+                switch (data.name[value['Name']]) {
+                    case 'new':
+                        data.name[value['Name']] = 'returning'
+                        data.returning += 2
+                        data.new -= 1
+                        break
 
-                return value
-            }, {})
+                    case 'returning':
+                        data.name[value['Name']] = 'returning+'
+                        data.returning += 1
+                        break
 
-            const dates = value.reduce( function(value, row) {
-                value[row['Date']] = (value[row['Date']] ? value[row['Date']].concat(row['Name']) : [row['Name']])
+                    default:
+                        data.name[value['Name']] = 'new'
+                        data.new += 1
+                        data.unique += 1
+                }
 
-                return value
-            }, {})
-
-            const times = value.reduce( function(value, row) {
-                value[row['Login Hour']] = (value[row['Login Hour']] ? value[row['Login Hour']].concat(row['Name']) : [row['Name']])
-
-                return value
-            }, {})
-
-            res.analytics = {
-
-                unique_total: Object.keys(unique).length,
-
-                new_total: Object.keys(unique).filter( function(value) {
-                    return unique[value] === 1
-                })
-                .length,
-
-                returning_total: Object.keys(unique).filter( function(value) {
-                    return unique[value] > 1
-                })
-                .length,
-
-                jumlah_per_hari: Object.keys(dates).map( function(date) {
-                    const unique = dates[date].reduce( function(value, name) {
-                        value[name] = (value[name] || 0) + 1
-
-                        return value
-                    }, {})
-
-                    return {
-
-                        used_at: date,
-
-                        unique: Object.keys(unique).length,
-
-                        new: Object.keys(unique).filter( function(value) {
-                            return unique[value] === 1
-                        })
-                        .length,
-
-                        returning: Object.keys(unique).filter( function(value) {
-                            return unique[value] > 1
-                        })
-                        .length,
-
+                if (!(data.date[value['Date']])) {
+                    data.date[value['Date']] = {}
+                    data.data_by_date[value['Date']] = {
+                        new: 0,
+                        returning: 0,
+                        unique: 0
                     }
-                }),
+                }
 
-                hari_ramai: Object.keys(dates)
-                .sort( function(a, b) {
-                    if (dates[a].length > dates[b].length) {
-                        return -1
-                    }
+                switch (data.date[value['Date']]?.[value['Name']]) {
+                    case 'new':
+                        data.date[value['Date']][value['Name']] = 'returning'
+                        data.data_by_date[value['Date']].returning += 2
+                        data.data_by_date[value['Date']].new -= 1
+                        break
 
-                    return 0
-                })
-                [0],
+                    case 'returning':
+                        data.date[value['Date']][value['Name']] = 'returning+'
+                        data.data_by_date[value['Date']].returning += 1
+                        break
 
-                jam_ramai: Object.keys(times).sort( function(a, b) {
-                    if (times[a].length > times[b].length) {
-                        return -1
-                    }
+                    default:
+                        data.date[value['Date']][value['Name']] = 'new'
+                        data.data_by_date[value['Date']].new += 1
+                        data.data_by_date[value['Date']].unique += 1
+                }
 
-                    return 0
-                })
-                [0],
-
-                age_group: {
-                    '<30': value.filter( function(row) {
-                        return ((new Date()).getFullYear() - row['Age']) < 30
-                    })
-                    .length,
-
-                    '30-55': value.filter( function(row) {
-                        return ((new Date()).getFullYear() - row['Age']) > 30 && (
-                            ((new Date()).getFullYear() - row['Age']) < 55
+                if ((data.data_by_date[value['Date']].new + data.data_by_date[value['Date']].returning) > (data.peak_date.total || 0)) {
+                    data.peak_date = {
+                        date: value['Date'],
+                        total: (
+                            data.data_by_date[value['Date']].new + data.data_by_date[value['Date']].returning
                         )
-                    })
-                    .length,
+                    }
+                }
 
-                    '>55': value.filter( function(row) {
-                        return ((new Date()).getFullYear() - row['Age']) > 55
-                    })
-                    .length
+                data.time[value['Login Hour']] = (data.time[value['Login Hour']] || 0) + 1
 
+                if (data.time[value['Login Hour']] > (data.peak_time.total || 0)) {
+                    data.peak_time = {
+                        time: value['Login Hour'],
+                        total: (
+                            data.time[value['Login Hour']]
+                        )
+                    }
+                }
+
+                data.gender[value['gender']] = (data.gender[value['gender']] || 0) + 1
+                data.device[value['Brand Device']] = (data.device[value['Brand Device']] || 0) + 1
+                data.interest[value['Digital Interest']] = (data.interest[value['Digital Interest']] || 0) + 1
+
+                if (data.name[value['Name']] === 'new') {
+                    const now = new Date()
+                    const age = now.getFullYear() - Number(value['Age'])
+
+                    switch (true) {
+                        case (age < 30):
+                            data.age_group['<30'] += 1
+                            break
+
+                        case (age > 55):
+                            data.age_group['>55'] += 1
+                            break
+
+                        default:
+                            data.age_group['30-55'] += 1
+                    }
+                }
+
+                if (!(data.locations.includes(value['Name of Location']))) {
+                    data.locations.push(value['Name of Location'])
+                }
+
+                return data
+            },
+            {
+                new: 0,
+                returning: 0,
+                unique: 0,
+                data_by_date: {},
+                peak_date: {},
+                peak_time: {},
+                gender: {},
+                device: {},
+                interest: {},
+                age_group: {
+                    '<30': 0,
+                    '30-55': 0,
+                    '>55': 0
                 },
+                locations: [],
+                name: {},
+                date: {},
+                time: {}
+            })
 
-                gender: {
-                    'man': value.filter( function(row) {
-                        return row.gender == 'Male'
-                    })
-                    .length,
+            delete analytics.name
+            delete analytics.date
+            delete analytics.time
 
-                    'woman': value.filter( function(row) {
-                        return row.gender == 'Female'
-                    })
-                    .length
-
-                },
-
-                device: value.filter( function(row, index, value) {
-                    return value.findIndex( function(value) {
-                        return value['Brand Device'] == row['Brand Device']
-                    }) === index
-                })
-                .reduce(function (device, row) {
-                    device[row['Brand Device']] = value.filter(function (value) {
-                        return value['Brand Device'] === row['Brand Device']
-                    })
-                    .length
-
-                    return device
-                }, {}),
-
-                digital_interest: value.filter( function(row, index, value) {
-                    return value.findIndex( function(value) {
-                        return value['Digital Interest'] == row['Digital Interest']
-                    }) === index
-                })
-                .reduce( function(interest, row) {
-                    interest[row['Digital Interest']] = value.filter(function (value) {
-                        return value['Digital Interest'] === row['Digital Interest']
-                    })
-                    .length
-
-                    return interest
-                }, {}),
-
-                user_data: Object.keys(unique).map( function(user, index) {
-                    user = { name: user }
-                    user.index = index + 1
-                    user.total = unique[user.name]
-                    user.data = value.filter( function(row) {
-                        return row['Name'] == user.name
-                    })
-
-                    return user
-                }),
-
-                locations: value.filter((row, index, data) => {
-                    return data.findIndex( function(value) {
-                        return value['Name of Location'] == row['Name of Location']
-                    }) === index
-                })
-
-            }
+            res.analytics = analytics
 
             next()
 

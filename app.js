@@ -1,6 +1,7 @@
 const express = require('express')
 const auth = require('./middleware/auth')
 const analytics = require('./middleware/analytics')
+const data = require('./middleware/data')
 const mongoConnect = require('./mongo-client/connect')
 
 const app = express()
@@ -10,19 +11,20 @@ app.use(express.static('./static'))
 
 app.use(express.json())
 
-app.use( function(req, res, next) {
-    res.setHeader('access-control-allow-origin', 'http://localhost:3030')
-    res.setHeader('access-control-allow-headers', 'content-type, x-access-token')
-    next()
-})
-
 app.use('/api/login', auth)
 app.use('/api/analytics', [auth, analytics])
+app.use('/api/data', [auth, data])
 
 app.get('/api/analytics', (req, res) => {
     if (!req.user) res.status(403).end()
 
     res.json(res.analytics)
+})
+
+app.get('/api/data', (req, res) => {
+    if (!req.user) res.status(403).end()
+
+    res.json(res.data)
 })
 
 app.post('/api/login', function(req, res) {
